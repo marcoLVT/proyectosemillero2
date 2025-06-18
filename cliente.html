@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>WebSocket Sensor</title></head>
+<body>
+  <h1>Valor del potenciómetro</h1>
+  <p id="valor">Esperando...</p>
+
+  <script>
+    const socket = new WebSocket('ws://localhost:8080');
+    socket.onmessage = (event) => {
+      document.getElementById('valor').innerText = event.data;
+    };
+  </script>
+</body>
+</html>
