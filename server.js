@@ -1,39 +1,47 @@
+const IS_RENDER = process.env.RENDER === 'true';
+
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
 const WebSocket = require('ws');
 
 // 👇 Usa tu puerto correcto (COMx)
-const port = new SerialPort({ path: 'COM10', baudRate: 9600 });
-const parser = port.pipe(new ReadlineParser({ delimiter: '\r\n' }));
+let parser = null;
+
+if (!IS_RENDER) {
+  const port = new SerialPort({ path: 'COM10', baudRate: 9600 });
+  parser = port.pipe(new ReadlineParser({ delimiter: '\r\n' }));
+}
 
 const wss = new WebSocket.Server({ port: 8080 });
 console.log('✅ Servidor WebSocket activo en ws://localhost:8080');
-
 wss.on('connection', (ws) => {
   console.log('🔌 Cliente conectado');
 
-  parser.on('data', (data) => {
-    console.log('📡 Dato del Arduino:', data);
+  if (parser) {
+    parser.on('data', (data) => {
+      console.log('📡 Dato del Arduino:', data);
 
-    ws.send(data); // 1️⃣ Enviar dato en tiempo real al navegador
+      ws.send(data); // 1️⃣ Enviar dato en tiempo real al navegador
 
-    const valor = parseInt(data); // 2️⃣ Convertir a número
-    if (!isNaN(valor)) {
-      // 3️⃣ Insertar en base de datos
-      conexion.query(
-        'INSERT INTO lecturas (valor) VALUES (?)',
-        [valor],
-        (err, results) => {
-          if (err) {
-            console.error('❌ Error al insertar en DB:', err);
-          } else {
-            console.log('💾 Valor guardado:', valor);
+      const valor = parseInt(data); // 2️⃣ Convertir a número
+      if (!isNaN(valor)) {
+        // 3️⃣ Insertar en base de datos
+        conexion.query(
+          'INSERT INTO lecturas (valor) VALUES (?)',
+          [valor],
+          (err, results) => {
+            if (err) {
+              console.error('❌ Error al insertar en DB:', err);
+            } else {
+              console.log('💾 Valor guardado:', valor);
+            }
           }
-        }
-      );
-    }
-  });
+        );
+      }
+    });
+  }
 });
+
 
 const mysql = require('mysql2');
 
