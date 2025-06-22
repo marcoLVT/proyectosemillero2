@@ -13,6 +13,7 @@
   "dependencies": {
     "@serialport/parser-readline": "^13.0.0",
     "mysql2": "^3.14.1",
+    "pg": "^8.16.2",
     "serialport": "^13.0.0",
     "ws": "^8.18.2"
   }
