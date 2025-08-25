@@ -1,0 +1,64 @@
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+// 🔹 Configuración WiFi
+const char* ssid = "Kitox";
+const char* password = "giorpa469";
+
+// 🔹 Configuración HiveMQ Cloud
+const char* mqtt_server = "45abc320943e4d708930117ef02e02c5.s1.eu.hivemq.cloud";
+const int mqtt_port = 8883;  // Puerto TLS seguro
+
+const char* mqtt_user = "esp8266";     // 👈 el que creaste en HiveMQ
+const char* mqtt_pass = "Giorpa469";    // 👈 el que creaste en HiveMQ
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// 🔹 Reintentar conexión MQTT
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Conectando a MQTT...");
+    if (client.connect("ESP32Client", mqtt_user, mqtt_pass)) {
+      Serial.println("Conectado a HiveMQ!");
+      client.subscribe("esp32/test"); 
+    } else {
+      Serial.print("Fallo, rc=");
+      Serial.print(client.state());
+      Serial.println(" reintentando en 5s");
+      delay(5000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi conectado!");
+
+  client.setServer(mqtt_server, mqtt_port);
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  // 🔹 Datos simulados
+  int joystickX = analogRead(34);
+  int joystickY = analogRead(35);
+  int distancia = random(10, 100);
+
+  char msg[100];
+  sprintf(msg, "X:%d,Y:%d,D:%d", joystickX, joystickY, distancia);
+  client.publish("esp32/datos", msg);
+
+  Serial.println("Enviado: " + String(msg));
+  delay(2000);
+}

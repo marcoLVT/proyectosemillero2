@@ -1,14 +1,31 @@
 <!DOCTYPE html>
 <html>
-<head><title>WebSocket Sensor</title></head>
+<head>
+  <title>WebSocket MPU6050</title>
+</head>
 <body>
-  <h1>Valor del potenciómetro</h1>
-  <p id="valor">Esperando...</p>
+  <h1>Valores del MPU6050</h1>
+  <ul>
+    <li>Acelerómetro X: <span id="ax">0</span></li>
+    <li>Acelerómetro Y: <span id="ay">0</span></li>
+    <li>Acelerómetro Z: <span id="az">0</span></li>
+    <li>Giroscopio X: <span id="gx">0</span></li>
+    <li>Giroscopio Y: <span id="gy">0</span></li>
+    <li>Giroscopio Z: <span id="gz">0</span></li>
+  </ul>
 
   <script>
     const socket = new WebSocket('ws://localhost:8080');
+
     socket.onmessage = (event) => {
-      document.getElementById('valor').innerText = event.data;
+      const data = JSON.parse(event.data);
+
+      document.getElementById('ax').innerText = data.AX;
+      document.getElementById('ay').innerText = data.AY;
+      document.getElementById('az').innerText = data.AZ;
+      document.getElementById('gx').innerText = data.GX;
+      document.getElementById('gy').innerText = data.GY;
+      document.getElementById('gz').innerText = data.GZ;
     };
   </script>
 </body>

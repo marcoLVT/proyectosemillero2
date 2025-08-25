@@ -1,16 +1,11 @@
-const IS_RENDER = process.env.RENDER === 'true';
-
-const { SerialPort } = require('serialport');
-const { ReadlineParser } = require('@serialport/parser-readline');
 const WebSocket = require('ws');
 const { Client } = require('pg');
+const mqtt = require('mqtt');
 
-// Configura tu conexión PostgreSQL con los datos de Railway
+// 🔹 Configura tu conexión PostgreSQL
 const conexion = new Client({
   connectionString: 'postgresql://postgres:YDaitqxFxRtmUKspxZKhsDIAXTxTmdhJ@mainline.proxy.rlwy.net:27517/railway',
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 conexion.connect((err) => {
@@ -21,45 +16,59 @@ conexion.connect((err) => {
   }
 });
 
-// Configura el parser solo si no estás en Render
-let parser = null;
-
-if (!IS_RENDER) {
-  try {
-    const port = new SerialPort({ path: 'COM10', baudRate: 9600 });
-    parser = port.pipe(new ReadlineParser({ delimiter: '\r\n' }));
-  } catch (error) {
-    console.warn('⚠️ SerialPort deshabilitado (Render):', error.message);
-  }
-}
-
+// 🔹 Servidor WebSocket
 const wss = new WebSocket.Server({ port: 8080 });
 console.log('✅ Servidor WebSocket activo en ws://localhost:8080');
 
 wss.on('connection', (ws) => {
-  console.log('🔌 Cliente conectado');
+  console.log('🔌 Cliente WebSocket conectado');
+});
 
-  if (parser) {
-    parser.on('data', (data) => {
-      console.log('📡 Dato del Arduino:', data);
+// 🔹 Conexión MQTT
+const mqttOptions = {
+  username: 'esp8266',
+  password: 'Giorpa469',
+  port: 8883,
+  protocol: 'mqtts'
+};
 
-      ws.send(data); // Enviar al navegador
+const mqttClient = mqtt.connect('mqtts://45abc320943e4d708930117ef02e02c5.s1.eu.hivemq.cloud', mqttOptions);
 
-      const valor = parseInt(data);
-      if (!isNaN(valor)) {
-        // Insertar en PostgreSQL
-        conexion.query(
-          'INSERT INTO lecturas (valor) VALUES ($1)',
-          [valor],
-          (err, res) => {
-            if (err) {
-              console.error('❌ Error al insertar en PostgreSQL:', err.stack);
-            } else {
-              console.log('💾 Valor guardado:', valor);
-            }
-          }
-        );
-      }
-    });
-  }
+mqttClient.on('connect', () => {
+  console.log('✅ Conectado a MQTT HiveMQ');
+  mqttClient.subscribe('esp32/datos', (err) => {
+    if (err) console.error('❌ Error al suscribirse al topic:', err);
+  });
+});
+
+mqttClient.on('message', (topic, message) => {
+  // 🔹 Convertir a string
+  const dataStr = message.toString();
+  console.log('📡 Datos recibidos:', dataStr);
+
+  // 🔹 Parsear CSV: AX:val,AY:val,...
+  const valores = {};
+  dataStr.split(',').forEach(pair => {
+    const [key, val] = pair.split(':');
+    valores[key] = parseInt(val);
+  });
+
+  // 🔹 Enviar a todos los clientes WebSocket
+  const jsonData = JSON.stringify(valores);
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(jsonData);
+    }
+  });
+
+  // 🔹 Guardar en PostgreSQL
+  const { AX, AY, AZ, GX, GY, GZ } = valores;
+  conexion.query(
+    'INSERT INTO lecturas_mpu6050 (ax, ay, az, gx, gy, gz) VALUES ($1,$2,$3,$4,$5,$6)',
+    [AX, AY, AZ, GX, GY, GZ],
+    (err) => {
+      if (err) console.error('❌ Error al insertar en PostgreSQL:', err.stack);
+      else console.log('💾 Valores guardados en DB');
+    }
+  );
 });
