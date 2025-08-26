@@ -1,74 +1,95 @@
+require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const http = require('http');
 const WebSocket = require('ws');
-const { Client } = require('pg');
 const mqtt = require('mqtt');
+const { Client } = require('pg');
 
-// 🔹 Configura tu conexión PostgreSQL
-const conexion = new Client({
-  connectionString: 'postgresql://postgres:YDaitqxFxRtmUKspxZKhsDIAXTxTmdhJ@mainline.proxy.rlwy.net:27517/railway',
-  ssl: { rejectUnauthorized: false }
-});
+// ======================
+// 📡 Servidor HTTP
+// ======================
+const PORT = process.env.PORT || 8080;
 
-conexion.connect((err) => {
-  if (err) {
-    console.error('❌ Error al conectar con PostgreSQL:', err.stack);
+const server = http.createServer((req, res) => {
+  if (req.url === '/' || req.url === '/index.html') {
+    fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
+      if (err) {
+        res.writeHead(500);
+        res.end('Error cargando index.html');
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(data);
+      }
+    });
   } else {
-    console.log('✅ Conectado a PostgreSQL');
+    res.writeHead(404);
+    res.end('Not Found');
   }
 });
 
-// 🔹 Servidor WebSocket
-const wss = new WebSocket.Server({ port: 8080 });
-console.log('✅ Servidor WebSocket activo en ws://localhost:8080');
+// ======================
+// 🔌 WebSocket
+// ======================
+const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
-  console.log('🔌 Cliente WebSocket conectado');
+  console.log('💻 Cliente conectado al WebSocket');
+  ws.send(JSON.stringify({ msg: "Conectado al servidor 🚀" }));
 });
 
-// 🔹 Conexión MQTT
+// ======================
+// 🗄️ PostgreSQL (Railway)
+// ======================
+const pgClient = new Client({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }, // Railway requiere SSL
+});
+
+pgClient.connect()
+  .then(() => console.log("✅ Conectado a PostgreSQL"))
+  .catch(err => console.error("❌ Error al conectar con PostgreSQL:", err));
+
+// ======================
+// 📡 MQTT (HiveMQ Cloud)
+// ======================
 const mqttOptions = {
-  username: 'esp8266',
-  password: 'Giorpa469',
-  port: 8883,
-  protocol: 'mqtts'
+  username: process.env.MQTT_USER,
+  password: process.env.MQTT_PASS,
+  port: process.env.MQTT_PORT,
+  protocol: "mqtts" // Conexión segura
 };
 
-const mqttClient = mqtt.connect('mqtts://45abc320943e4d708930117ef02e02c5.s1.eu.hivemq.cloud', mqttOptions);
+const mqttClient = mqtt.connect(`mqtts://${process.env.MQTT_HOST}`, mqttOptions);
 
-mqttClient.on('connect', () => {
-  console.log('✅ Conectado a MQTT HiveMQ');
-  mqttClient.subscribe('esp32/datos', (err) => {
-    if (err) console.error('❌ Error al suscribirse al topic:', err);
-  });
+mqttClient.on("connect", () => {
+  console.log("✅ Conectado a MQTT");
+  mqttClient.subscribe("esp8266/mpu6050");
 });
 
-mqttClient.on('message', (topic, message) => {
-  // 🔹 Convertir a string
-  const dataStr = message.toString();
-  console.log('📡 Datos recibidos:', dataStr);
+mqttClient.on("message", async (topic, message) => {
+  const data = message.toString();
+  console.log(`📩 Mensaje MQTT: ${data}`);
 
-  // 🔹 Parsear CSV: AX:val,AY:val,...
-  const valores = {};
-  dataStr.split(',').forEach(pair => {
-    const [key, val] = pair.split(':');
-    valores[key] = parseInt(val);
-  });
-
-  // 🔹 Enviar a todos los clientes WebSocket
-  const jsonData = JSON.stringify(valores);
+  // Enviar a todos los clientes WebSocket
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(jsonData);
+      client.send(data);
     }
   });
 
-  // 🔹 Guardar en PostgreSQL
-  const { AX, AY, AZ, GX, GY, GZ } = valores;
-  conexion.query(
-    'INSERT INTO lecturas_mpu6050 (ax, ay, az, gx, gy, gz) VALUES ($1,$2,$3,$4,$5,$6)',
-    [AX, AY, AZ, GX, GY, GZ],
-    (err) => {
-      if (err) console.error('❌ Error al insertar en PostgreSQL:', err.stack);
-      else console.log('💾 Valores guardados en DB');
-    }
-  );
+  // Guardar en PostgreSQL
+  try {
+    await pgClient.query("INSERT INTO lecturas (dato, fecha) VALUES ($1, NOW())", [data]);
+    console.log("💾 Guardado en PostgreSQL");
+  } catch (err) {
+    console.error("❌ Error al guardar en PostgreSQL:", err);
+  }
+});
+
+// ======================
+// 🚀 Iniciar servidor
+// ======================
+server.listen(PORT, () => {
+  console.log(`✅ Servidor activo en puerto ${PORT}`);
 });
