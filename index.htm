@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>📊 Monitor en Tiempo Real</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f9;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      color: #333;
+    }
+    #log {
+      margin-top: 20px;
+      padding: 10px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      height: 300px;
+      overflow-y: auto;
+      text-align: left;
+    }
+    .msg {
+      padding: 5px;
+      border-bottom: 1px solid #ddd;
+    }
+  </style>
+</head>
+<body>
+  <h1>📡 Monitor de datos en tiempo real</h1>
+  <p>Conexión WebSocket: <span id="status">🔴 Desconectado</span></p>
+
+  <div id="log"></div>
+
+  <script>
+    // Conexión al WebSocket del server.js
+    const ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}`);
+
+    const status = document.getElementById("status");
+    const log = document.getElementById("log");
+
+    ws.onopen = () => {
+      status.textContent = "🟢 Conectado";
+    };
+
+    ws.onmessage = (event) => {
+      const data = event.data;
+      const div = document.createElement("div");
+      div.className = "msg";
+      div.textContent = `📩 ${new Date().toLocaleTimeString()} → ${data}`;
+      log.prepend(div);
+    };
+
+    ws.onclose = () => {
+      status.textContent = "🔴 Desconectado";
+    };
+  </script>
+</body>
+</html>

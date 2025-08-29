@@ -47,7 +47,17 @@ const pgClient = new Client({
 });
 
 pgClient.connect()
-  .then(() => console.log("✅ Conectado a PostgreSQL"))
+  .then(async () => {
+    console.log("✅ Conectado a PostgreSQL");
+
+    try {
+      const res = await pgClient.query("SELECT * FROM lecturas ORDER BY fecha DESC LIMIT 5");
+      console.log("📊 Últimos registros en la tabla lecturas:");
+      console.table(res.rows);
+    } catch (err) {
+      console.error("❌ Error al leer lecturas:", err);
+    }
+  })
   .catch(err => console.error("❌ Error al conectar con PostgreSQL:", err));
 
 // ======================
