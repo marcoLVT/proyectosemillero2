@@ -55,65 +55,46 @@ const mqttOptions = {
 const mqttClient = mqtt.connect(`mqtts://${process.env.MQTT_HOST}`, mqttOptions);
 
 mqttClient.on("connect", () => {
-  console.log("✅ Conectado a MQTT");
-  mqttClient.subscribe("esp8266/mpu6050");
+    console.log("✅ Conectado a MQTT en Node.js");
+
+    mqttClient.subscribe("esp8266/mpu6050", (err) => {
+        if (err) console.error("❌ Error suscribiendo:", err);
+        else console.log("✅ Suscrito al topic esp8266/mpu6050");
+    });
 });
+
 
 mqttClient.on("message", async (topic, message) => {
-  const data = JSON.parse(message.toString()); // Convertimos el JSON a objeto
-  console.log("📩 Mensaje MQTT:", data);
+    const data = JSON.parse(message.toString());
+    console.log("📩 Mensaje MQTT:", data);
 
-  // Broadcast por WebSocket
-  wss.clients.forEach((client) => {
-    if (client.readyState === 1) client.send(JSON.stringify(data));
-  });
+    // WebSocket broadcast
+    wss.clients.forEach(client => {
+        if (client.readyState === 1) client.send(JSON.stringify(data));
+    });
 
-  // Guardar en PostgreSQL con columnas separadas
-  const { ax, ay, az, gx, gy, gz, temp } = data;
+    const { ax, ay, az, gx, gy, gz, temp, fecha } = data;
 
-  try {
-    await pgClient.query(
-    `INSERT INTO particionado (ax, ay, az, gx, gy, gz, temp, fecha)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, clock_timestamp())`,
-   [ax, ay, az, gx, gy, gz, temp]
-  );
-
-
-
-    console.log("💾 Guardado en PostgreSQL con columnas separadas ✅");
-  } catch (err) {
-    console.error("❌ Error al guardar:", err);
-  }
-});
-
-
-
-
-// ======================
-// 📥 Exportar CSV
-// ======================
-app.get("/export", async (req, res) => {
-  try {
-    const result = await pgClient.query("SELECT * FROM particionado ORDER BY fecha DESC");
-    if (result.rows.length === 0) {
-      return res.status(404).send("No hay datos en la tabla particionado");
+    // Separar fecha y hora
+    let fechaOnly = fecha;
+    let horaOnly = '';
+    if (fecha.includes(' ')) {
+        [fechaOnly, horaOnly] = fecha.split(' ');
     }
 
-    const parser = new Parser();
-    const csv = parser.parse(result.rows);
+    try {
+        await pgClient.query(
+            `INSERT INTO partir (ax, ay, az, gx, gy, gz, temp, fecha, hora)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [ax, ay, az, gx, gy, gz, temp, fechaOnly, horaOnly]
+        );
 
-    res.header("Content-Type", "text/csv");
-    res.attachment("lecturas.csv");
-    return res.send(csv);
-  } catch (err) {
-    console.error("❌ Error exportando CSV:", err);
-    res.status(500).send("Error exportando CSV");
-  }
+        console.log("💾 Guardado en PostgreSQL con fecha y hora del sensor ✅");
+    } catch (err) {
+        console.error("❌ Error al guardar:", err);
+    }
 });
 
-// ======================
-// 🚀 Iniciar servidor
-// ======================
-server.listen(PORT, () => {
-  console.log(`✅ Servidor activo en puerto ${PORT}`);
+mqttClient.on("error", (err) => {
+    console.error("❌ Error MQTT:", err);
 });
